@@ -21,9 +21,11 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
 
 import lombok.Data;
+import lombok.val;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -180,10 +182,13 @@ public class KinesisProxy implements IKinesisProxyExtended {
             try {
                 response = client.describeStream(describeStreamRequest);
             } catch (LimitExceededException le) {
+                long jitter = (long) (this.describeStreamBackoffTimeInMillis
+                        * ThreadLocalRandom.current().nextDouble());
+                long backoffTime = describeStreamBackoffTimeInMillis + jitter;
                 LOG.info("Got LimitExceededException when describing stream " + streamName + ". Backing off for "
-                        + this.describeStreamBackoffTimeInMillis + " millis.");
+                        + backoffTime + " millis.");
                 try {
-                    Thread.sleep(this.describeStreamBackoffTimeInMillis);
+                    Thread.sleep(backoffTime);
                 } catch (InterruptedException ie) {
                     LOG.debug("Stream " + streamName + " : Sleep  was interrupted ", ie);
                 }
