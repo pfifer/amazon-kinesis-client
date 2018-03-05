@@ -37,6 +37,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.IntStream;
 
+import com.amazonaws.services.kinesis.clientlibrary.utils.NoOpRequestIdHandler;
+import com.amazonaws.services.kinesis.clientlibrary.utils.RequestIdHandler;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -76,6 +78,7 @@ public class PrefetchGetRecordsCacheTest {
     private LinkedBlockingQueue<ProcessRecordsInput> spyQueue;
     private PrefetchGetRecordsCache getRecordsCache;
     private String operation = "ProcessTask";
+    private RequestIdHandler requestIdHandler = NoOpRequestIdHandler.INSTANCE;
 
     @Before
     public void setup() {
@@ -92,7 +95,7 @@ public class PrefetchGetRecordsCacheTest {
                 IDLE_MILLIS_BETWEEN_CALLS,
                 new NullMetricsFactory(),
                 operation,
-                "shardId");
+                "shardId", requestIdHandler);
         spyQueue = spy(getRecordsCache.getRecordsResultQueue);
         records = spy(new ArrayList<>());
 

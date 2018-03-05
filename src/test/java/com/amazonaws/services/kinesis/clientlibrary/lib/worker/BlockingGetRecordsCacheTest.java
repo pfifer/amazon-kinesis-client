@@ -24,6 +24,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.amazonaws.services.kinesis.clientlibrary.utils.NoOpRequestIdHandler;
+import com.amazonaws.services.kinesis.clientlibrary.utils.RequestIdHandler;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -45,14 +47,16 @@ public class BlockingGetRecordsCacheTest {
     private GetRecordsRetrievalStrategy getRecordsRetrievalStrategy;
     @Mock
     private GetRecordsResult getRecordsResult;
-    
+
+    private RequestIdHandler requestIdHandler = NoOpRequestIdHandler.INSTANCE;
+
     private List<Record> records;
     private BlockingGetRecordsCache blockingGetRecordsCache;
 
     @Before
     public void setup() {
         records = new ArrayList<>();
-        blockingGetRecordsCache = new BlockingGetRecordsCache(MAX_RECORDS_PER_COUNT, getRecordsRetrievalStrategy);
+        blockingGetRecordsCache = new BlockingGetRecordsCache(MAX_RECORDS_PER_COUNT, getRecordsRetrievalStrategy, requestIdHandler);
 
         when(getRecordsRetrievalStrategy.getRecords(eq(MAX_RECORDS_PER_COUNT))).thenReturn(getRecordsResult);
         when(getRecordsResult.getRecords()).thenReturn(records);

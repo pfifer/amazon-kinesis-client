@@ -19,8 +19,10 @@ import java.time.Duration;
 import java.time.Instant;
 
 import com.amazonaws.services.kinesis.clientlibrary.types.ProcessRecordsInput;
+import com.amazonaws.services.kinesis.clientlibrary.utils.RequestIdHandler;
 import com.amazonaws.services.kinesis.model.GetRecordsResult;
 
+import lombok.AllArgsConstructor;
 import lombok.extern.apachecommons.CommonsLog;
 
 /**
@@ -28,15 +30,11 @@ import lombok.extern.apachecommons.CommonsLog;
  * GetRecordsRetrievalStrategy class.
  */
 @CommonsLog
+@AllArgsConstructor
 public class BlockingGetRecordsCache implements GetRecordsCache {
     private final int maxRecordsPerCall;
     private final GetRecordsRetrievalStrategy getRecordsRetrievalStrategy;
-
-    public BlockingGetRecordsCache(final int maxRecordsPerCall,
-                                   final GetRecordsRetrievalStrategy getRecordsRetrievalStrategy) {
-        this.maxRecordsPerCall = maxRecordsPerCall;
-        this.getRecordsRetrievalStrategy = getRecordsRetrievalStrategy;
-    }
+    private final RequestIdHandler requestIdHandler;
 
     @Override
     public void start() {
@@ -48,9 +46,8 @@ public class BlockingGetRecordsCache implements GetRecordsCache {
     @Override
     public ProcessRecordsInput getNextResult() {
         GetRecordsResult getRecordsResult = getRecordsRetrievalStrategy.getRecords(maxRecordsPerCall);
-        return new ProcessRecordsInput()
-                .withRecords(getRecordsResult.getRecords())
-                .withMillisBehindLatest(getRecordsResult.getMillisBehindLatest());
+
+        return new ProcessRecordsInput(getRecordsResult, requestIdHandler);
     }
     
     @Override

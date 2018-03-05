@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import com.amazonaws.services.kinesis.clientlibrary.utils.RequestIdHandler;
 import org.apache.commons.lang.Validate;
 
 import com.amazonaws.SdkClientException;
@@ -46,22 +47,26 @@ import lombok.extern.apachecommons.CommonsLog;
 @CommonsLog
 public class PrefetchGetRecordsCache implements GetRecordsCache {
     private static final String EXPIRED_ITERATOR_METRIC = "ExpiredIterator";
-    LinkedBlockingQueue<ProcessRecordsInput> getRecordsResultQueue;
-    private int maxPendingProcessRecordsInput;
-    private int maxByteSize;
-    private int maxRecordsCount;
+
     private final int maxRecordsPerCall;
     private final GetRecordsRetrievalStrategy getRecordsRetrievalStrategy;
     private final ExecutorService executorService;
     private final IMetricsFactory metricsFactory;
     private final long idleMillisBetweenCalls;
-    private Instant lastSuccessfulCall;
-    private final DefaultGetRecordsCacheDaemon defaultGetRecordsCacheDaemon;
-    private PrefetchCounters prefetchCounters;
-    private boolean started = false;
     private final String operation;
     private final KinesisDataFetcher dataFetcher;
     private final String shardId;
+    private final RequestIdHandler requestIdHandler;
+    private final DefaultGetRecordsCacheDaemon defaultGetRecordsCacheDaemon;
+
+    LinkedBlockingQueue<ProcessRecordsInput> getRecordsResultQueue;
+    private int maxPendingProcessRecordsInput;
+    private int maxByteSize;
+    private int maxRecordsCount;
+    private Instant lastSuccessfulCall;
+    private PrefetchCounters prefetchCounters;
+    private boolean started = false;
+
 
     /**
      * Constructor for the PrefetchGetRecordsCache. This cache prefetches records from Kinesis and stores them in a
@@ -85,7 +90,7 @@ public class PrefetchGetRecordsCache implements GetRecordsCache {
                                    final long idleMillisBetweenCalls,
                                    @NonNull final IMetricsFactory metricsFactory,
                                    @NonNull final String operation,
-                                   @NonNull final String shardId) {
+                                   @NonNull final String shardId, @NonNull RequestIdHandler requestIdHandler) {
         this.getRecordsRetrievalStrategy = getRecordsRetrievalStrategy;
         this.maxRecordsPerCall = maxRecordsPerCall;
         this.maxPendingProcessRecordsInput = maxPendingProcessRecordsInput;
@@ -101,6 +106,7 @@ public class PrefetchGetRecordsCache implements GetRecordsCache {
         this.operation = operation;
         this.dataFetcher = this.getRecordsRetrievalStrategy.getDataFetcher();
         this.shardId = shardId;
+        this.requestIdHandler = requestIdHandler;
     }
 
     @Override
@@ -163,9 +169,7 @@ public class PrefetchGetRecordsCache implements GetRecordsCache {
                         sleepBeforeNextCall();
                         GetRecordsResult getRecordsResult = getRecordsRetrievalStrategy.getRecords(maxRecordsPerCall);
                         lastSuccessfulCall = Instant.now();
-                        ProcessRecordsInput processRecordsInput = new ProcessRecordsInput()
-                                .withRecords(getRecordsResult.getRecords())
-                                .withMillisBehindLatest(getRecordsResult.getMillisBehindLatest())
+                        ProcessRecordsInput processRecordsInput = new ProcessRecordsInput(getRecordsResult, requestIdHandler)
                                 .withCacheEntryTime(lastSuccessfulCall);
                         getRecordsResultQueue.put(processRecordsInput);
                         prefetchCounters.added(processRecordsInput);

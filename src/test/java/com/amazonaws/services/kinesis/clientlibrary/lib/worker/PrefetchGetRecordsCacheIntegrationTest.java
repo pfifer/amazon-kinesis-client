@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import com.amazonaws.services.kinesis.clientlibrary.utils.NoOpRequestIdHandler;
+import com.amazonaws.services.kinesis.clientlibrary.utils.RequestIdHandler;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -74,7 +76,9 @@ public class PrefetchGetRecordsCacheIntegrationTest {
     private IKinesisProxy proxy;
     @Mock
     private ShardInfo shardInfo;
-    
+
+    private RequestIdHandler requestIdHandler = NoOpRequestIdHandler.INSTANCE;
+
     @Before
     public void setup() {
         records = new ArrayList<>();
@@ -91,7 +95,7 @@ public class PrefetchGetRecordsCacheIntegrationTest {
                 IDLE_MILLIS_BETWEEN_CALLS,
                 new NullMetricsFactory(),
                 operation,
-                "test-shard");
+                "test-shard", requestIdHandler);
     }
     
     @Test
@@ -138,7 +142,7 @@ public class PrefetchGetRecordsCacheIntegrationTest {
                 IDLE_MILLIS_BETWEEN_CALLS,
                 new NullMetricsFactory(),
                 operation,
-                "test-shard-2");
+                "test-shard-2", requestIdHandler);
         
         getRecordsCache.start();
         sleep(IDLE_MILLIS_BETWEEN_CALLS);

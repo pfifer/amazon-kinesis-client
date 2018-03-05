@@ -14,15 +14,22 @@
  */
 package com.amazonaws.services.kinesis.clientlibrary.lib.worker;
 
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import com.amazonaws.services.kinesis.metrics.interfaces.IMetricsFactory;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.apachecommons.CommonsLog;
 
 @CommonsLog
+@RequiredArgsConstructor
 public class SimpleRecordsFetcherFactory implements RecordsFetcherFactory {
+
+    private static final String METRIC_OPERATION = "ProcessTask";
+    private final KinesisClientLibConfiguration configuration;
+
     private int maxPendingProcessRecordsInput = 3;
     private int maxByteSize = 8 * 1024 * 1024;
     private int maxRecordsCount = 30000;
@@ -33,19 +40,23 @@ public class SimpleRecordsFetcherFactory implements RecordsFetcherFactory {
     public GetRecordsCache createRecordsFetcher(GetRecordsRetrievalStrategy getRecordsRetrievalStrategy, String shardId,
                                                 IMetricsFactory metricsFactory, int maxRecords) {
         if(dataFetchingStrategy.equals(DataFetchingStrategy.DEFAULT)) {
-            return new BlockingGetRecordsCache(maxRecords, getRecordsRetrievalStrategy);
+            return new BlockingGetRecordsCache(maxRecords, getRecordsRetrievalStrategy, configuration.getRequestIdHandler());
         } else {
             return new PrefetchGetRecordsCache(maxPendingProcessRecordsInput, maxByteSize, maxRecordsCount, maxRecords,
                     getRecordsRetrievalStrategy,
-                    Executors.newFixedThreadPool(1, new ThreadFactoryBuilder()
-                            .setDaemon(true)
-                            .setNameFormat("prefetch-cache-" + shardId + "-%04d")
-                            .build()),
+                    makeExecutorService(shardId),
                             idleMillisBetweenCalls,
                     metricsFactory,
-                    "ProcessTask",
-                    shardId);
+                    METRIC_OPERATION,
+                    shardId, configuration.getRequestIdHandler());
         }
+    }
+
+    private ExecutorService makeExecutorService(String shardId) {
+        return Executors.newFixedThreadPool(1, new ThreadFactoryBuilder()
+                .setDaemon(true)
+                .setNameFormat("prefetch-cache-" + shardId + "-%04d")
+                .build());
     }
 
     @Override

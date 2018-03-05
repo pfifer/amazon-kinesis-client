@@ -17,8 +17,11 @@ package com.amazonaws.services.kinesis.clientlibrary.types;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorCheckpointer;
+import com.amazonaws.services.kinesis.clientlibrary.utils.RequestIdHandler;
+import com.amazonaws.services.kinesis.model.GetRecordsResult;
 import com.amazonaws.services.kinesis.model.Record;
 
 import lombok.Getter;
@@ -33,6 +36,10 @@ public class ProcessRecordsInput {
     private Instant cacheEntryTime;
     @Getter
     private Instant cacheExitTime;
+    @Getter
+    private Optional<String> requestId;
+    @Getter
+    private Optional<String> requestId2;
     private List<Record> records;
     private IRecordProcessorCheckpointer checkpointer;
     private Long millisBehindLatest;
@@ -41,6 +48,13 @@ public class ProcessRecordsInput {
      * Default constructor.
      */
     public ProcessRecordsInput() {
+    }
+
+    public ProcessRecordsInput(GetRecordsResult getRecordsResult, RequestIdHandler requestIdHandler) {
+        this.records = getRecordsResult.getRecords();
+        this.millisBehindLatest = getRecordsResult.getMillisBehindLatest();
+        this.requestId = requestIdHandler.getRequestId(getRecordsResult);
+        this.requestId2 = requestIdHandler.getRequestId2(getRecordsResult);
     }
 
     /**

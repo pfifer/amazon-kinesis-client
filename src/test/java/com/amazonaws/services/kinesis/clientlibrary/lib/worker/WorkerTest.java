@@ -178,7 +178,7 @@ public class WorkerTest {
     @Before
     public void setup() {
         config = spy(new KinesisClientLibConfiguration("app", null, null, null));
-        recordsFetcherFactory = spy(new SimpleRecordsFetcherFactory());
+        recordsFetcherFactory = spy(new SimpleRecordsFetcherFactory(config));
         when(config.getRecordsFetcherFactory()).thenReturn(recordsFetcherFactory);
     }
 
@@ -511,7 +511,7 @@ public class WorkerTest {
         lease.setCheckpoint(new ExtendedSequenceNumber("2"));
         initialLeases.add(lease);
         boolean callProcessRecordsForEmptyRecordList = true;
-        RecordsFetcherFactory recordsFetcherFactory = new SimpleRecordsFetcherFactory();
+        RecordsFetcherFactory recordsFetcherFactory = new SimpleRecordsFetcherFactory(config);
         recordsFetcherFactory.setIdleMillisBetweenCalls(0L);
         when(config.getRecordsFetcherFactory()).thenReturn(recordsFetcherFactory);
         runAndTestWorker(shardList, threadPoolSize, initialLeases, callProcessRecordsForEmptyRecordList, numberOfRecordsPerShard, config);

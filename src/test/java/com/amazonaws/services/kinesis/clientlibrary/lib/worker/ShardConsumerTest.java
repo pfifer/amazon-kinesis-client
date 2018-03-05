@@ -27,6 +27,7 @@ import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.argThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -50,6 +51,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import com.amazonaws.services.kinesis.clientlibrary.utils.NoOpRequestIdHandler;
+import com.amazonaws.services.kinesis.clientlibrary.utils.RequestIdHandler;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.hamcrest.Description;
@@ -120,14 +123,18 @@ public class ShardConsumerTest {
     @Mock
     private ShutdownNotification shutdownNotification;
 
+    private RequestIdHandler requestIdHandler = NoOpRequestIdHandler.INSTANCE;
+
     @Before
     public void setup() {
         getRecordsCache = null;
         dataFetcher = null;
-        
-        recordsFetcherFactory = spy(new SimpleRecordsFetcherFactory());
+
+        recordsFetcherFactory = spy(new SimpleRecordsFetcherFactory(config));
+
         when(config.getRecordsFetcherFactory()).thenReturn(recordsFetcherFactory);
         when(config.getLogWarningForTaskAfterMillis()).thenReturn(Optional.empty());
+        when(config.getRequestIdHandler()).thenReturn(requestIdHandler);
     }
     
     /**
@@ -349,10 +356,9 @@ public class ShardConsumerTest {
         dataFetcher = new KinesisDataFetcher(streamConfig.getStreamProxy(), shardInfo);
 
         getRecordsCache = spy(new BlockingGetRecordsCache(maxRecords,
-                new SynchronousGetRecordsRetrievalStrategy(dataFetcher)));
-        when(recordsFetcherFactory.createRecordsFetcher(any(GetRecordsRetrievalStrategy.class), anyString(),
-                any(IMetricsFactory.class), anyInt()))
-                .thenReturn(getRecordsCache);
+                new SynchronousGetRecordsRetrievalStrategy(dataFetcher), requestIdHandler));
+        doReturn(getRecordsCache).when(recordsFetcherFactory).createRecordsFetcher(any(GetRecordsRetrievalStrategy.class), anyString(),
+                any(IMetricsFactory.class), anyInt());
         
         ShardConsumer consumer =
                 new ShardConsumer(shardInfo,
@@ -482,7 +488,7 @@ public class ShardConsumerTest {
         dataFetcher = new KinesisDataFetcher(streamConfig.getStreamProxy(), shardInfo);
 
         getRecordsCache = spy(new BlockingGetRecordsCache(maxRecords,
-                new SynchronousGetRecordsRetrievalStrategy(dataFetcher)));
+                new SynchronousGetRecordsRetrievalStrategy(dataFetcher), requestIdHandler));
         when(recordsFetcherFactory.createRecordsFetcher(any(GetRecordsRetrievalStrategy.class), anyString(),
                 any(IMetricsFactory.class), anyInt()))
                 .thenReturn(getRecordsCache);
@@ -630,7 +636,7 @@ public class ShardConsumerTest {
         dataFetcher = new KinesisDataFetcher(streamConfig.getStreamProxy(), shardInfo);
         
         getRecordsCache = spy(new BlockingGetRecordsCache(maxRecords,
-                new SynchronousGetRecordsRetrievalStrategy(dataFetcher)));
+                new SynchronousGetRecordsRetrievalStrategy(dataFetcher), requestIdHandler));
         when(recordsFetcherFactory.createRecordsFetcher(any(GetRecordsRetrievalStrategy.class), anyString(),
                 any(IMetricsFactory.class), anyInt()))
                 .thenReturn(getRecordsCache);
@@ -728,7 +734,7 @@ public class ShardConsumerTest {
         final ExtendedSequenceNumber checkpointSequenceNumber = new ExtendedSequenceNumber("123");
         final ExtendedSequenceNumber pendingCheckpointSequenceNumber = new ExtendedSequenceNumber("999");
         when(leaseManager.getLease(anyString())).thenReturn(null);
-        when(config.getRecordsFetcherFactory()).thenReturn(new SimpleRecordsFetcherFactory());
+        when(config.getRecordsFetcherFactory()).thenReturn(new SimpleRecordsFetcherFactory(config));
         when(checkpoint.getCheckpointObject(anyString())).thenReturn(
                 new Checkpoint(checkpointSequenceNumber, pendingCheckpointSequenceNumber));
 

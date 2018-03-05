@@ -18,17 +18,22 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.Set;
 
+import com.amazonaws.services.kinesis.clientlibrary.types.ProcessRecordsInput;
 import org.apache.commons.lang.Validate;
 
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.regions.RegionUtils;
+import com.amazonaws.services.kinesis.clientlibrary.utils.LoggingRequestIdHandler;
+import com.amazonaws.services.kinesis.clientlibrary.utils.NoOpRequestIdHandler;
+import com.amazonaws.services.kinesis.clientlibrary.utils.RequestIdHandler;
 import com.amazonaws.services.kinesis.metrics.impl.MetricsHelper;
 import com.amazonaws.services.kinesis.metrics.interfaces.IMetricsScope;
 import com.amazonaws.services.kinesis.metrics.interfaces.MetricsLevel;
 import com.google.common.collect.ImmutableSet;
 
 import lombok.Getter;
+import lombok.Setter;
 
 /**
  * Configuration for the Amazon Kinesis Client Library.
@@ -192,6 +197,11 @@ public class KinesisClientLibConfiguration {
      */
     public static final int DEFAULT_MAX_LIST_SHARDS_RETRY_ATTEMPTS = 50;
 
+    /**
+     * The default request id handler that will extract requestIds, but won't log them.
+     */
+    public static final RequestIdHandler DEFAULT_REQUEST_ID_HANDLER = NoOpRequestIdHandler.INSTANCE;
+
     private String applicationName;
     private String tableName;
     private String streamName;
@@ -254,6 +264,13 @@ public class KinesisClientLibConfiguration {
     
     @Getter
     private int maxListShardsRetryAttempts = DEFAULT_MAX_LIST_SHARDS_RETRY_ATTEMPTS;
+
+    /**
+     * Enables or Disables request IDs logging for all requests to Kinesis, DynamoDB, and CloudWatch.
+     */
+    @Getter
+    @Setter
+    private RequestIdHandler requestIdHandler = DEFAULT_REQUEST_ID_HANDLER;
 
     /**
      * Constructor.
@@ -494,7 +511,7 @@ public class KinesisClientLibConfiguration {
                 InitialPositionInStreamExtended.newInitialPosition(initialPositionInStream);
         this.skipShardSyncAtWorkerInitializationIfLeasesExist = DEFAULT_SKIP_SHARD_SYNC_AT_STARTUP_IF_LEASES_EXIST;
         this.shardPrioritization = DEFAULT_SHARD_PRIORITIZATION;
-        this.recordsFetcherFactory = new SimpleRecordsFetcherFactory();
+        this.recordsFetcherFactory = new SimpleRecordsFetcherFactory(this);
     }
 
     /**
@@ -1423,6 +1440,35 @@ public class KinesisClientLibConfiguration {
     public KinesisClientLibConfiguration withMaxListShardsRetryAttempts(int maxListShardsRetryAttempts) {
         checkIsValuePositive("maxListShardsRetryAttempts", maxListShardsRetryAttempts);
         this.maxListShardsRetryAttempts = maxListShardsRetryAttempts;
+        return this;
+    }
+
+    /**
+     * Sets the request id handler that will extract and/or log request ids.
+     * 
+     * @param requestIdHandler
+     *            the handler to use for request id extraction
+     * @return this
+     */
+    public KinesisClientLibConfiguration withRequestIdHandler(RequestIdHandler requestIdHandler) {
+        this.requestIdHandler = requestIdHandler;
+        return this;
+    }
+
+    /**
+     * Enables or disable request id logging by switching the RequestIdHandler instances.
+     * 
+     * @param logRequestIds
+     *            whether to log requestIds when true it uses {@link LoggingRequestIdHandler}, and when false it uses
+     *            {@link NoOpRequestIdHandler}
+     * @return this
+     */
+    public KinesisClientLibConfiguration withLogRequestIds(boolean logRequestIds) {
+        if (logRequestIds) {
+            this.requestIdHandler = LoggingRequestIdHandler.INSTANCE;
+        } else {
+            this.requestIdHandler = DEFAULT_REQUEST_ID_HANDLER;
+        }
         return this;
     }
 }

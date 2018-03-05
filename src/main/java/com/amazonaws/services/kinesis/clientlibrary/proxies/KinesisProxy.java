@@ -31,6 +31,8 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.services.kinesis.AmazonKinesis;
 import com.amazonaws.services.kinesis.AmazonKinesisClient;
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.KinesisClientLibConfiguration;
+import com.amazonaws.services.kinesis.clientlibrary.utils.NoOpRequestIdHandler;
+import com.amazonaws.services.kinesis.clientlibrary.utils.RequestIdHandler;
 import com.amazonaws.services.kinesis.model.DescribeStreamRequest;
 import com.amazonaws.services.kinesis.model.DescribeStreamResult;
 import com.amazonaws.services.kinesis.model.ExpiredIteratorException;
@@ -61,9 +63,10 @@ public class KinesisProxy implements IKinesisProxyExtended {
 
     private static final EnumSet<ShardIteratorType> EXPECTED_ITERATOR_TYPES = EnumSet
             .of(ShardIteratorType.AT_SEQUENCE_NUMBER, ShardIteratorType.AFTER_SEQUENCE_NUMBER);
+    public static final String SERVICE_NAME = "Kinesis";
 
     private static String defaultServiceName = "kinesis";
-    private static String defaultRegionId = "us-east-1";;
+    private static String defaultRegionId = "us-east-1";
 
     private AmazonKinesis client;
     private AWSCredentialsProvider credentialsProvider;
@@ -78,7 +81,9 @@ public class KinesisProxy implements IKinesisProxyExtended {
     private final int maxDescribeStreamRetryAttempts;
     private final long listShardsBackoffTimeInMillis;
     private final int maxListShardsRetryAttempts;
+    private final RequestIdHandler requestIdHandler;
     private boolean isKinesisClient = true;
+
 
     /**
      * @deprecated We expect the client to be passed to the proxy, and the proxy will not require to create it.
@@ -194,22 +199,29 @@ public class KinesisProxy implements IKinesisProxyExtended {
                 DEFAULT_DESCRIBE_STREAM_BACKOFF_MILLIS,
                 DEFAULT_DESCRIBE_STREAM_RETRY_TIMES,
                 config.getListShardsBackoffTimeInMillis(),
-                config.getMaxListShardsRetryAttempts());
+                config.getMaxListShardsRetryAttempts(), config.getRequestIdHandler());
         this.credentialsProvider = config.getKinesisCredentialsProvider();
     }
 
     public KinesisProxy(final String streamName,
-            final AmazonKinesis client,
-            final long describeStreamBackoffTimeInMillis,
-            final int maxDescribeStreamRetryAttempts,
-            final long listShardsBackoffTimeInMillis,
+            final AmazonKinesis client, final long describeStreamBackoffTimeInMillis,
+            final int maxDescribeStreamRetryAttempts, final long listShardsBackoffTimeInMillis,
             final int maxListShardsRetryAttempts) {
+        this(streamName, client, describeStreamBackoffTimeInMillis, maxDescribeStreamRetryAttempts,
+                listShardsBackoffTimeInMillis, maxListShardsRetryAttempts, NoOpRequestIdHandler.INSTANCE);
+    }
+
+    public KinesisProxy(final String streamName, final AmazonKinesis client,
+            final long describeStreamBackoffTimeInMillis, final int maxDescribeStreamRetryAttempts,
+            final long listShardsBackoffTimeInMillis, final int maxListShardsRetryAttempts,
+            RequestIdHandler requestIdHandler) {
         this.streamName = streamName;
         this.client = client;
         this.describeStreamBackoffTimeInMillis = describeStreamBackoffTimeInMillis;
         this.maxDescribeStreamRetryAttempts = maxDescribeStreamRetryAttempts;
         this.listShardsBackoffTimeInMillis = listShardsBackoffTimeInMillis;
         this.maxListShardsRetryAttempts = maxListShardsRetryAttempts;
+        this.requestIdHandler = requestIdHandler;
 
         try {
             if (Class.forName("com.amazonaws.services.dynamodbv2.streamsadapter.AmazonDynamoDBStreamsAdapterClient")
@@ -234,6 +246,7 @@ public class KinesisProxy implements IKinesisProxyExtended {
         getRecordsRequest.setShardIterator(shardIterator);
         getRecordsRequest.setLimit(maxRecords);
         final GetRecordsResult response = client.getRecords(getRecordsRequest);
+        requestIdHandler.logRequestId(response);
         return response;
 
     }
@@ -258,9 +271,11 @@ public class KinesisProxy implements IKinesisProxyExtended {
         while (response == null) {
             try {
                 response = client.describeStream(describeStreamRequest);
+                requestIdHandler.logRequestId(response);
             } catch (LimitExceededException le) {
                 LOG.info("Got LimitExceededException when describing stream " + streamName + ". Backing off for "
                         + this.describeStreamBackoffTimeInMillis + " millis.");
+                requestIdHandler.logFailureRequestId(le, describeStreamRequest);
                 try {
                     Thread.sleep(this.describeStreamBackoffTimeInMillis);
                 } catch (InterruptedException ie) {
@@ -302,9 +317,11 @@ public class KinesisProxy implements IKinesisProxyExtended {
         while (result == null) {
             try {
                 result = client.listShards(request);
+                requestIdHandler.logRequestId(result);
             } catch (LimitExceededException e) {
                 LOG.info("Got LimitExceededException when listing shards " + streamName + ". Backing off for "
                         + this.listShardsBackoffTimeInMillis + " millis.");
+                requestIdHandler.logFailureRequestId(e, request);
                 try {
                     Thread.sleep(this.listShardsBackoffTimeInMillis);
                 } catch (InterruptedException ie) {
@@ -314,6 +331,7 @@ public class KinesisProxy implements IKinesisProxyExtended {
             } catch (ResourceInUseException e) {
                 LOG.info("Stream is not in Active/Updating status, returning null (wait until stream is in Active or"
                         + " Updating)");
+                requestIdHandler.logFailureRequestId(e, request);
                 return null;
             }
             remainingRetries--;
@@ -442,6 +460,7 @@ public class KinesisProxy implements IKinesisProxyExtended {
         getShardIteratorRequest.setStartingSequenceNumber(sequenceNumber);
         getShardIteratorRequest.setTimestamp(null);
         final GetShardIteratorResult response = client.getShardIterator(getShardIteratorRequest);
+        requestIdHandler.logRequestId(response);
         return response.getShardIterator();
     }
 
@@ -458,6 +477,7 @@ public class KinesisProxy implements IKinesisProxyExtended {
         getShardIteratorRequest.setStartingSequenceNumber(null);
         getShardIteratorRequest.setTimestamp(null);
         final GetShardIteratorResult response = client.getShardIterator(getShardIteratorRequest);
+        requestIdHandler.logRequestId(response);
         return response.getShardIterator();
     }
 
@@ -474,6 +494,7 @@ public class KinesisProxy implements IKinesisProxyExtended {
         getShardIteratorRequest.setStartingSequenceNumber(null);
         getShardIteratorRequest.setTimestamp(timestamp);
         final GetShardIteratorResult response = client.getShardIterator(getShardIteratorRequest);
+        requestIdHandler.logRequestId(response);
         return response.getShardIterator();
     }
 
@@ -494,6 +515,7 @@ public class KinesisProxy implements IKinesisProxyExtended {
         putRecordRequest.setData(data);
 
         final PutRecordResult response = client.putRecord(putRecordRequest);
+        requestIdHandler.logRequestId(response);
         return response;
     }
 
