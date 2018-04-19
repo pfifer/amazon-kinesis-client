@@ -20,6 +20,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -33,6 +34,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.InitialPositionInStreamExtended;
+import com.amazonaws.services.kinesis.model.GetShardIteratorResult;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -80,9 +82,14 @@ public class PrefetchGetRecordsCacheIntegrationTest {
     private ExtendedSequenceNumber extendedSequenceNumber;
     @Mock
     private InitialPositionInStreamExtended initialPosition;
+    @Mock
+    private GetShardIteratorResult shardIteratorResult;
 
     @Before
     public void setup() {
+        when(extendedSequenceNumber.getSequenceNumber()).thenReturn("1234");
+        when(amazonKinesis.getShardIterator(any())).thenReturn(shardIteratorResult);
+        when(shardIteratorResult.getShardIterator()).thenReturn("Whee");
         records = new ArrayList<>();
         dataFetcher = spy(new KinesisDataFetcherForTest(amazonKinesis, streamName, shardId, MAX_RECORDS_PER_CALL));
         getRecordsRetrievalStrategy = spy(new SynchronousGetRecordsRetrievalStrategy(dataFetcher));
