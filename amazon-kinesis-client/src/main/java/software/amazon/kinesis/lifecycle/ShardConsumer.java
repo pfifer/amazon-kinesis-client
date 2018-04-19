@@ -37,7 +37,6 @@ import lombok.extern.slf4j.Slf4j;
 import software.amazon.kinesis.coordinator.RecordProcessorCheckpointer;
 import software.amazon.kinesis.leases.ILeaseManager;
 import software.amazon.kinesis.leases.KinesisClientLease;
-import software.amazon.kinesis.leases.LeaseManager;
 import software.amazon.kinesis.leases.LeaseManagerProxy;
 import software.amazon.kinesis.leases.ShardInfo;
 import software.amazon.kinesis.metrics.IMetricsFactory;
@@ -113,7 +112,10 @@ public class ShardConsumer {
 
     private void start() {
         started = true;
-        getRecordsCache.addDataArrivedListener(this::checkAndSubmitNextTask);
+        getRecordsCache.addDataArrivedListener(() -> {
+            log.debug("Data arrived on cache, triggering dispatch now.");
+            checkAndSubmitNextTask();
+        });
         checkAndSubmitNextTask();
     }
     /**
@@ -198,7 +200,25 @@ public class ShardConsumer {
     }
 
     private boolean shouldDispatchNextTask() {
-        return !isShutdown() || shutdownReason != null || getRecordsCache.hasResultAvailable();
+        if (isShutdown()) {
+            log.debug("ShardConsumer is shutdown, not dispatching");
+            return false;
+        }
+        if (shutdownReason != null) {
+            log.debug("Shutdown pending, dispatching to complete shutdown.");
+            return true;
+        }
+        if (currentState.requiresRepeatedDispatch()) {
+            log.debug("Current state {} requires a repeated dispatch to make progress.  Triggering dispatch",
+                    currentState.getState().name());
+            return true;
+        }
+        if (getRecordsCache.hasResultAvailable()) {
+            log.debug("Data is available on the cache dispatching immediately");
+            return true;
+        }
+        log.debug("No work is currently needed, not dispatching.");
+        return false;
     }
 
     @Synchronized
@@ -360,5 +380,9 @@ public class ShardConsumer {
      */
     ConsumerStates.ShardConsumerState getCurrentState() {
         return currentState.getState();
+    }
+
+    protected ConsumerStates.ConsumerState initialState() {
+        return ConsumerStates.INITIAL_STATE;
     }
 }

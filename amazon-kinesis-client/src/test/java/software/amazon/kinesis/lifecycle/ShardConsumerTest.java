@@ -27,6 +27,7 @@ import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.argThat;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -37,7 +38,10 @@ import static org.mockito.Mockito.when;
 
 import java.io.File;
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.ListIterator;
@@ -49,7 +53,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.hamcrest.Description;
 import org.hamcrest.Matcher;
@@ -58,6 +65,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
@@ -85,6 +93,7 @@ import software.amazon.kinesis.processor.ICheckpoint;
 import software.amazon.kinesis.processor.IRecordProcessor;
 import software.amazon.kinesis.retrieval.AsynchronousGetRecordsRetrievalStrategy;
 import software.amazon.kinesis.retrieval.BlockingGetRecordsCache;
+import software.amazon.kinesis.retrieval.DataArrivedListener;
 import software.amazon.kinesis.retrieval.GetRecordsCache;
 import software.amazon.kinesis.retrieval.GetRecordsRetrievalStrategy;
 import software.amazon.kinesis.retrieval.IKinesisProxy;
@@ -101,7 +110,6 @@ import software.amazon.kinesis.utils.TestStreamlet;
  */
 @RunWith(MockitoJUnitRunner.class)
 @Slf4j
-@Ignore
 public class ShardConsumerTest {
     private final IMetricsFactory metricsFactory = new NullMetricsFactory();
     private final boolean callProcessRecordsForEmptyRecordList = false;
@@ -125,13 +133,12 @@ public class ShardConsumerTest {
 
     // Use Executors.newFixedThreadPool since it returns ThreadPoolExecutor, which is
     // ... a non-final public class, and so can be mocked and spied.
-    private final ExecutorService executorService = Executors.newFixedThreadPool(1);
-
-
+    @Mock
+    private ExecutorService executorService;
+    @Mock
     private GetRecordsCache getRecordsCache;
-    
+    @Mock
     private KinesisDataFetcher dataFetcher;
-
     @Mock
     private RecordsFetcherFactory recordsFetcherFactory;
     @Mock
@@ -150,17 +157,133 @@ public class ShardConsumerTest {
     private RecordProcessorCheckpointer recordProcessorCheckpointer;
     @Mock
     private LeaseManagerProxy leaseManagerProxy;
+    @Mock
+    private ConsumerStates.ConsumerState consumerState;
+    @Mock
+    private Future<TaskResult> taskResultFuture;
+    @Mock
+    private TaskResult taskResult;
+    @Mock
+    private KinesisClientLease lease;
 
     @Before
     public void setup() {
         shardInfo = new ShardInfo(shardId, concurrencyToken, null, ExtendedSequenceNumber.TRIM_HORIZON);
-        dataFetcher = new KinesisDataFetcher(amazonKinesis, streamName, shardId, maxRecords);
-        getRecordsCache = new BlockingGetRecordsCache(maxRecords,
-                new SynchronousGetRecordsRetrievalStrategy(dataFetcher));
+        // dataFetcher = new KinesisDataFetcher(amazonKinesis, streamName, shardId, maxRecords);
+        // getRecordsCache = new BlockingGetRecordsCache(maxRecords,
+        // new SynchronousGetRecordsRetrievalStrategy(dataFetcher));
 
         //recordsFetcherFactory = spy(new SimpleRecordsFetcherFactory());
         when(config.getRecordsFetcherFactory()).thenReturn(recordsFetcherFactory);
         when(config.getLogWarningForTaskAfterMillis()).thenReturn(Optional.empty());
+    }
+
+    @Test
+    public void simpleTest() throws Exception {
+        ExecutorService singleThread = Executors.newSingleThreadExecutor();
+        ShardConsumer shardConsumer = new ShardConsumer(shardInfo, streamName, leaseManager, singleThread,
+                getRecordsCache, recordProcessor, checkpoint, recordProcessorCheckpointer,
+                parentShardPollIntervalMillis, taskBackoffTimeMillis, Optional.empty(), amazonKinesis,
+                skipShardSyncAtWorkerInitializationIfLeasesExist, listShardsBackoffTimeInMillis,
+                maxListShardRetryAttempts, callProcessRecordsForEmptyRecordList, idleTimeInMillis,
+                InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.TRIM_HORIZON),
+                cleanupLeasesOfCompletedShards, ignoreUnexpectedChildShards, leaseManagerProxy, metricsFactory);
+        when(leaseManager.getLease(anyString())).thenReturn(null);
+
+        Checkpoint initialCheckpoint = new Checkpoint(ExtendedSequenceNumber.LATEST, null);
+        when(checkpoint.getCheckpointObject(anyString())).thenReturn(initialCheckpoint);
+
+        when(recordProcessorCheckpointer.lastCheckpointValue()).thenReturn(ExtendedSequenceNumber.LATEST);
+
+        Instant start = Instant.now();
+        final Semaphore semaphore = new Semaphore(-5);
+
+        when(getRecordsCache.hasResultAvailable()).thenReturn(true);
+        when(getRecordsCache.getNextResult()).thenAnswer(i -> {
+            semaphore.release();
+            List<Record> records = Collections.singletonList(makeRecord());
+            ProcessRecordsInput res = new ProcessRecordsInput(start, Instant.now(), false, records,
+                    recordProcessorCheckpointer, 100L);
+            return res;
+        });
+        Semaphore shutdownCalled = new Semaphore(0);
+        doAnswer(i -> {
+            shutdownCalled.release();
+            return null;
+        }).when(recordProcessor).shutdown(any(ShutdownInput.class));
+
+        shardConsumer.consumeShard();
+        semaphore.acquire();
+        shardConsumer.markForShutdown(ShutdownReason.ZOMBIE);
+        shutdownCalled.acquire();
+
+        verify(recordProcessor).initialize(any());
+        verify(recordProcessor, times(6)).processRecords(any());
+        verify(recordProcessor).shutdown(any());
+
+    }
+
+    @Test
+    public void noneAvailableTest() throws Exception {
+        ExecutorService singleThread = Executors.newSingleThreadExecutor();
+        ShardConsumer shardConsumer = new ShardConsumer(shardInfo, streamName, leaseManager, singleThread,
+                getRecordsCache, recordProcessor, checkpoint, recordProcessorCheckpointer,
+                parentShardPollIntervalMillis, taskBackoffTimeMillis, Optional.empty(), amazonKinesis,
+                skipShardSyncAtWorkerInitializationIfLeasesExist, listShardsBackoffTimeInMillis,
+                maxListShardRetryAttempts, callProcessRecordsForEmptyRecordList, idleTimeInMillis,
+                InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.TRIM_HORIZON),
+                cleanupLeasesOfCompletedShards, ignoreUnexpectedChildShards, leaseManagerProxy, metricsFactory);
+        when(leaseManager.getLease(anyString())).thenReturn(null);
+
+        Checkpoint initialCheckpoint = new Checkpoint(ExtendedSequenceNumber.LATEST, null);
+        when(checkpoint.getCheckpointObject(anyString())).thenReturn(initialCheckpoint);
+
+        when(recordProcessorCheckpointer.lastCheckpointValue()).thenReturn(ExtendedSequenceNumber.LATEST);
+
+        ArgumentCaptor<DataArrivedListener> dataArrivedListenerArgumentCaptor = ArgumentCaptor
+                .forClass(DataArrivedListener.class);
+        doNothing().when(getRecordsCache).addDataArrivedListener(dataArrivedListenerArgumentCaptor.capture());
+
+        Instant start = Instant.now();
+        final Semaphore semaphore = new Semaphore(-5);
+        AtomicBoolean resultAvailable = new AtomicBoolean(false);
+
+        when(getRecordsCache.hasResultAvailable()).thenAnswer(i -> {
+            return resultAvailable.getAndSet(false);
+        });
+        when(getRecordsCache.getNextResult()).thenAnswer(i -> {
+            semaphore.release();
+            List<Record> records = Collections.singletonList(makeRecord());
+            ProcessRecordsInput res = new ProcessRecordsInput(start, Instant.now(), false, records,
+                    recordProcessorCheckpointer, 100L);
+            return res;
+        });
+        Semaphore shutdownCalled = new Semaphore(0);
+        doAnswer(i -> {
+            shutdownCalled.release();
+            return null;
+        }).when(recordProcessor).shutdown(any(ShutdownInput.class));
+
+        shardConsumer.consumeShard();
+
+        while (!semaphore.tryAcquire(250, TimeUnit.MILLISECONDS)) {
+            resultAvailable.set(true);
+            dataArrivedListenerArgumentCaptor.getValue().dataArrived();
+        }
+        shardConsumer.markForShutdown(ShutdownReason.ZOMBIE);
+        shutdownCalled.acquire();
+
+        verify(recordProcessor).initialize(any());
+        verify(recordProcessor, times(6)).processRecords(any());
+        verify(recordProcessor).shutdown(any());
+
+    }
+
+    private Record makeRecord() {
+        byte[] data = new byte[100];
+        ThreadLocalRandom.current().nextBytes(data);
+        return new Record().withSequenceNumber("1234").withData(ByteBuffer.wrap(data)).withPartitionKey("ABC")
+                .withApproximateArrivalTimestamp(new Date());
     }
     
     /**
@@ -169,6 +292,7 @@ public class ShardConsumerTest {
     @SuppressWarnings("unchecked")
     @Test
 //    TODO: check if sleeps can be removed
+    @Ignore
     public final void testInitializationStateUponFailure() throws Exception {
         when(checkpoint.getCheckpoint(eq(shardId))).thenThrow(NullPointerException.class);
         when(checkpoint.getCheckpointObject(eq(shardId))).thenThrow(NullPointerException.class);
@@ -194,6 +318,7 @@ public class ShardConsumerTest {
      */
     @SuppressWarnings("unchecked")
     @Test
+    @Ignore
     public final void testInitializationStateUponSubmissionFailure() throws Exception {
         final ExecutorService spyExecutorService = spy(executorService);
 
@@ -220,6 +345,7 @@ public class ShardConsumerTest {
 
     @SuppressWarnings("unchecked")
     @Test
+    @Ignore
     public final void testRecordProcessorThrowable() throws Exception {
         ShardConsumer consumer = createShardConsumer(shardInfo, executorService, Optional.empty());
 
@@ -274,6 +400,7 @@ public class ShardConsumerTest {
      * Test method for {@link ShardConsumer#consumeShard()}
      */
     @Test
+    @Ignore
     public final void testConsumeShard() throws Exception {
         int numRecs = 10;
         BigInteger startSeqNum = BigInteger.ONE;
@@ -378,6 +505,7 @@ public class ShardConsumerTest {
      * recordProcessor's shutdown method with reason terminate will be retried.
      */
     @Test
+    @Ignore
     public final void testConsumeShardWithTransientTerminateError() throws Exception {
         int numRecs = 10;
         BigInteger startSeqNum = BigInteger.ONE;
@@ -469,6 +597,7 @@ public class ShardConsumerTest {
      * Test method for {@link ShardConsumer#consumeShard()} that starts from initial position of type AT_TIMESTAMP.
      */
     @Test
+    @Ignore
     public final void testConsumeShardWithInitialPositionAtTimestamp() throws Exception {
         int numRecs = 7;
         BigInteger startSeqNum = BigInteger.ONE;
@@ -543,6 +672,7 @@ public class ShardConsumerTest {
 
     @SuppressWarnings("unchecked")
     @Test
+    @Ignore
     public final void testConsumeShardInitializedWithPendingCheckpoint() throws Exception {
         ShardConsumer consumer = createShardConsumer(shardInfo, executorService, Optional.empty());
 
@@ -571,6 +701,7 @@ public class ShardConsumerTest {
     }
     
     @Test
+    @Ignore
     public void testCreateSynchronousGetRecordsRetrieval() {
         ShardConsumer consumer = createShardConsumer(shardInfo, executorService, Optional.empty());
         
@@ -579,6 +710,7 @@ public class ShardConsumerTest {
     }
 
     @Test
+    @Ignore
     public void testCreateAsynchronousGetRecordsRetrieval() {
         getRecordsCache = new BlockingGetRecordsCache(maxRecords,
                 new AsynchronousGetRecordsRetrievalStrategy(dataFetcher, 5, 3, shardId));
@@ -590,6 +722,7 @@ public class ShardConsumerTest {
     
     @SuppressWarnings("unchecked")
     @Test
+    @Ignore
     public void testLongRunningTasks() throws InterruptedException {
         final long sleepTime = 1000L;
         ExecutorService mockExecutorService = mock(ExecutorService.class);

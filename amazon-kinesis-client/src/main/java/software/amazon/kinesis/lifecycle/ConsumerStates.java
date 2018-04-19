@@ -148,6 +148,15 @@ class ConsumerStates {
 
         boolean isTerminal();
 
+        /**
+         * Whether this state needs to be dispatched after each completion to allow progress to be made.
+         * 
+         * @return true if the task needs to be dispatched again, false if dispatch will be triggered out of band
+         */
+        default boolean requiresRepeatedDispatch() {
+            return false;
+        };
+
     }
 
     /**
@@ -218,6 +227,11 @@ class ConsumerStates {
         @Override
         public boolean isTerminal() {
             return false;
+        }
+
+        @Override
+        public boolean requiresRepeatedDispatch() {
+            return true;
         }
     }
 
@@ -483,6 +497,11 @@ class ConsumerStates {
         @Override
         public boolean isTerminal() {
             return false;
+        }
+
+        @Override
+        public boolean requiresRepeatedDispatch() {
+            return true;
         }
     }
 

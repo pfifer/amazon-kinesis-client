@@ -63,8 +63,8 @@ public class ProcessTask implements ITask {
             ProcessRecordsInput processRecordsInput = getRecordsCache.getNextResult();
 
             if (processRecordsInput.getMillisBehindLatest() != null) {
-                MetricsHelper.getMetricsScope().addData(MILLIS_BEHIND_LATEST_METRIC,
-                        processRecordsInput.getMillisBehindLatest(), StandardUnit.Milliseconds, MetricsLevel.SUMMARY);
+//                MetricsHelper.getMetricsScope().addData(MILLIS_BEHIND_LATEST_METRIC,
+//                        processRecordsInput.getMillisBehindLatest(), StandardUnit.Milliseconds, MetricsLevel.SUMMARY);
             }
 
             return processRecordsInput;
