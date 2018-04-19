@@ -16,13 +16,10 @@
 package software.amazon.kinesis.checkpoint;
 
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
+
 import lombok.Data;
 import lombok.NonNull;
 import lombok.experimental.Accessors;
-import software.amazon.kinesis.coordinator.RecordProcessorCheckpointer;
-import software.amazon.kinesis.leases.ILeaseManager;
-import software.amazon.kinesis.leases.KinesisClientLeaseManager;
-import software.amazon.kinesis.leases.LeaseManagementConfig;
 import software.amazon.kinesis.metrics.IMetricsFactory;
 import software.amazon.kinesis.metrics.NullMetricsFactory;
 
@@ -53,8 +50,6 @@ public class CheckpointConfig {
 
     private long failoverTimeMillis = 10000L;
 
-    private ILeaseManager leaseManager;
-
     private int maxLeasesForWorker = Integer.MAX_VALUE;
 
     private int maxLeasesToStealAtOneTime = 1;
@@ -67,23 +62,9 @@ public class CheckpointConfig {
 
     private long epsilonMillis = 25L;
 
-    public ILeaseManager leaseManager() {
-        if (leaseManager == null) {
-            leaseManager = new KinesisClientLeaseManager(tableName, amazonDynamoDB, consistentReads);
-        }
-        return leaseManager;
-    }
-
     public CheckpointFactory checkpointFactory() {
         if (checkpointFactory == null) {
-            checkpointFactory = new DynamoDBCheckpointFactory(leaseManager(),
-                    workerIdentifier(),
-                    failoverTimeMillis(),
-                    epsilonMillis(),
-                    maxLeasesForWorker(),
-                    maxLeasesToStealAtOneTime(),
-                    maxLeaseRenewalThreads(),
-                    metricsFactory());
+            checkpointFactory = new DynamoDBCheckpointFactory(metricsFactory());
         }
         return checkpointFactory;
     }

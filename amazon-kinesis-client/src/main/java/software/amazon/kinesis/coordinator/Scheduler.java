@@ -38,7 +38,7 @@ import lombok.NonNull;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.kinesis.checkpoint.CheckpointConfig;
-import software.amazon.kinesis.leases.ILeaseManager;
+import software.amazon.kinesis.leases.LeaseManager;
 import software.amazon.kinesis.leases.KinesisClientLease;
 import software.amazon.kinesis.leases.KinesisClientLibLeaseCoordinator;
 import software.amazon.kinesis.leases.LeaseManagementConfig;
@@ -59,8 +59,8 @@ import software.amazon.kinesis.metrics.IMetricsFactory;
 import software.amazon.kinesis.metrics.MetricsCollectingTaskDecorator;
 import software.amazon.kinesis.metrics.MetricsConfig;
 import software.amazon.kinesis.metrics.MetricsLevel;
-import software.amazon.kinesis.processor.ICheckpoint;
-import software.amazon.kinesis.processor.IShutdownNotificationAware;
+import software.amazon.kinesis.processor.Checkpointer;
+import software.amazon.kinesis.processor.ShutdownNotificationAware;
 import software.amazon.kinesis.processor.ProcessorConfig;
 import software.amazon.kinesis.processor.ProcessorFactory;
 import software.amazon.kinesis.retrieval.RetrievalConfig;
@@ -84,7 +84,7 @@ public class Scheduler implements Runnable {
     private final RetrievalConfig retrievalConfig;
 
     private final String applicationName;
-    private final ICheckpoint checkpoint;
+    private final Checkpointer checkpoint;
     private final long idleTimeInMilliseconds;
     // Backoff time when polling to check if application has finished processing
     // parent shards
@@ -108,7 +108,7 @@ public class Scheduler implements Runnable {
     private final String streamName;
     private final long listShardsBackoffTimeMillis;
     private final int maxListShardsRetryAttempts;
-    private final ILeaseManager<KinesisClientLease> leaseManager;
+    private final LeaseManager<KinesisClientLease> leaseManager;
     private final LeaseManagerProxy leaseManagerProxy;
     private final boolean ignoreUnexpetedChildShards;
 
@@ -143,14 +143,15 @@ public class Scheduler implements Runnable {
         this.retrievalConfig = retrievalConfig;
 
         this.applicationName = this.coordinatorConfig.applicationName();
-
         this.leaseCoordinator =
                 this.leaseManagementConfig.leaseManagementFactory().createKinesisClientLibLeaseCoordinator();
+        this.leaseManager = this.leaseCoordinator.leaseManager();
 
         //
         // TODO: Figure out what to do with lease manage <=> checkpoint relationship
         //
-        this.checkpoint = this.checkpointConfig.checkpointFactory().createCheckpoint(this.leaseCoordinator);
+        this.checkpoint = this.checkpointConfig.checkpointFactory().createCheckpointer(this.leaseCoordinator,
+                this.leaseManager);
 
         this.idleTimeInMilliseconds = this.retrievalConfig.idleTimeBetweenReadsInMillis();
         this.parentShardPollIntervalMillis = this.coordinatorConfig.parentShardPollIntervalMillis();
@@ -174,7 +175,6 @@ public class Scheduler implements Runnable {
         this.streamName = this.retrievalConfig.streamName();
         this.listShardsBackoffTimeMillis = this.retrievalConfig.listShardsBackoffTimeInMillis();
         this.maxListShardsRetryAttempts = this.retrievalConfig.maxListShardsRetryAttempts();
-        this.leaseManager = this.leaseCoordinator.leaseManager();
         this.leaseManagerProxy = this.shardSyncTaskManager.leaseManagerProxy();
         this.ignoreUnexpetedChildShards = this.leaseManagementConfig.ignoreUnexpectedChildShards();
     }
@@ -320,7 +320,7 @@ public class Scheduler implements Runnable {
 
     /**
      * Requests a graceful shutdown of the worker, notifying record processors, that implement
-     * {@link IShutdownNotificationAware}, of the impending shutdown. This gives the record processor a final chance to
+     * {@link ShutdownNotificationAware}, of the impending shutdown. This gives the record processor a final chance to
      * checkpoint.
      *
      * This will only create a single shutdown future. Additional attempts to start a graceful shutdown will return the

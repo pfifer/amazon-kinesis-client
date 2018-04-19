@@ -20,15 +20,15 @@ import com.google.common.annotations.VisibleForTesting;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import software.amazon.kinesis.coordinator.RecordProcessorCheckpointer;
-import software.amazon.kinesis.leases.ILeaseManager;
+import software.amazon.kinesis.checkpoint.RecordProcessorCheckpointer;
+import software.amazon.kinesis.leases.LeaseManager;
 import software.amazon.kinesis.leases.KinesisClientLease;
 import software.amazon.kinesis.leases.LeaseManagerProxy;
 import software.amazon.kinesis.leases.ShardInfo;
 import software.amazon.kinesis.leases.ShardSyncer;
 import software.amazon.kinesis.metrics.MetricsHelper;
 import software.amazon.kinesis.metrics.MetricsLevel;
-import software.amazon.kinesis.processor.IRecordProcessor;
+import software.amazon.kinesis.processor.RecordProcessor;
 import software.amazon.kinesis.retrieval.GetRecordsCache;
 import software.amazon.kinesis.retrieval.kpl.ExtendedSequenceNumber;
 
@@ -45,7 +45,7 @@ public class ShutdownTask implements ITask {
     @NonNull
     private final LeaseManagerProxy leaseManagerProxy;
     @NonNull
-    private final IRecordProcessor recordProcessor;
+    private final RecordProcessor recordProcessor;
     @NonNull
     private final RecordProcessorCheckpointer recordProcessorCheckpointer;
     @NonNull
@@ -55,7 +55,7 @@ public class ShutdownTask implements ITask {
     private final boolean cleanupLeasesOfCompletedShards;
     private final boolean ignoreUnexpectedChildShards;
     @NonNull
-    private final ILeaseManager<KinesisClientLease> leaseManager;
+    private final LeaseManager<KinesisClientLease> leaseManager;
     private final long backoffTimeMillis;
     @NonNull
     private final GetRecordsCache getRecordsCache;

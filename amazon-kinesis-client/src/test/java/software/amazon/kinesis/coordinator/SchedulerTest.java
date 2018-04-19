@@ -50,12 +50,13 @@ import com.amazonaws.services.kinesis.clientlibrary.exceptions.KinesisClientLibN
 import software.amazon.kinesis.checkpoint.Checkpoint;
 import software.amazon.kinesis.checkpoint.CheckpointConfig;
 import software.amazon.kinesis.checkpoint.CheckpointFactory;
+import software.amazon.kinesis.leases.LeaseManager;
 import software.amazon.kinesis.leases.KinesisClientLease;
 import software.amazon.kinesis.leases.KinesisClientLibLeaseCoordinator;
 import software.amazon.kinesis.leases.LeaseCoordinator;
 import software.amazon.kinesis.leases.LeaseManagementConfig;
 import software.amazon.kinesis.leases.LeaseManagementFactory;
-import software.amazon.kinesis.leases.LeaseManager;
+import software.amazon.kinesis.leases.DynamoDBLeaseManager;
 import software.amazon.kinesis.leases.LeaseManagerProxy;
 import software.amazon.kinesis.leases.ShardInfo;
 import software.amazon.kinesis.leases.ShardSyncTaskManager;
@@ -67,8 +68,8 @@ import software.amazon.kinesis.lifecycle.ShutdownInput;
 import software.amazon.kinesis.lifecycle.ShutdownReason;
 import software.amazon.kinesis.metrics.IMetricsFactory;
 import software.amazon.kinesis.metrics.MetricsConfig;
-import software.amazon.kinesis.processor.ICheckpoint;
-import software.amazon.kinesis.processor.IRecordProcessor;
+import software.amazon.kinesis.processor.Checkpointer;
+import software.amazon.kinesis.processor.RecordProcessor;
 import software.amazon.kinesis.processor.ProcessorConfig;
 import software.amazon.kinesis.processor.ProcessorFactory;
 import software.amazon.kinesis.retrieval.GetRecordsCache;
@@ -110,11 +111,11 @@ public class SchedulerTest {
     @Mock
     private ShardSyncTaskManager shardSyncTaskManager;
     @Mock
-    private LeaseManager<KinesisClientLease> leaseManager;
+    private DynamoDBLeaseManager<KinesisClientLease> dynamoDBLeaseManager;
     @Mock
     private LeaseManagerProxy leaseManagerProxy;
     @Mock
-    private ICheckpoint checkpoint;
+    private Checkpointer checkpoint;
 
     @Before
     public void setup() {
@@ -130,7 +131,7 @@ public class SchedulerTest {
         processorConfig = new ProcessorConfig(processorFactory);
         retrievalConfig = new RetrievalConfig(streamName, amazonKinesis).retrievalFactory(retrievalFactory);
 
-        when(leaseCoordinator.leaseManager()).thenReturn(leaseManager);
+        when(leaseCoordinator.leaseManager()).thenReturn(dynamoDBLeaseManager);
         when(shardSyncTaskManager.leaseManagerProxy()).thenReturn(leaseManagerProxy);
         when(retrievalFactory.createGetRecordsCache(any(ShardInfo.class), any(IMetricsFactory.class))).thenReturn(getRecordsCache);
 
@@ -399,8 +400,8 @@ public class SchedulerTest {
 
     private static class TestRecordProcessorFactory implements ProcessorFactory {
         @Override
-        public IRecordProcessor createRecordProcessor() {
-            return new IRecordProcessor() {
+        public RecordProcessor createRecordProcessor() {
+            return new RecordProcessor() {
                 @Override
                 public void initialize(final InitializationInput initializationInput) {
                     // Do nothing.
@@ -441,8 +442,8 @@ public class SchedulerTest {
         }
 
         @Override
-        public LeaseManager<KinesisClientLease> createLeaseManager() {
-            return leaseManager;
+        public DynamoDBLeaseManager<KinesisClientLease> createLeaseManager() {
+            return dynamoDBLeaseManager;
         }
 
         @Override
@@ -458,7 +459,8 @@ public class SchedulerTest {
 
     private class TestKinesisCheckpointFactory implements CheckpointFactory {
         @Override
-        public ICheckpoint createCheckpoint(KinesisClientLibLeaseCoordinator leaseCoordinator) {
+        public Checkpointer createCheckpointer(final LeaseCoordinator<KinesisClientLease> leaseCoordinator,
+                                               final LeaseManager<KinesisClientLease> leaseManager) {
             return checkpoint;
         }
     }

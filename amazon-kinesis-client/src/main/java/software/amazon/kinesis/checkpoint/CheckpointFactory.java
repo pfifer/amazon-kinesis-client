@@ -15,12 +15,15 @@
 
 package software.amazon.kinesis.checkpoint;
 
-import software.amazon.kinesis.leases.KinesisClientLibLeaseCoordinator;
-import software.amazon.kinesis.processor.ICheckpoint;
+import software.amazon.kinesis.leases.LeaseManager;
+import software.amazon.kinesis.leases.KinesisClientLease;
+import software.amazon.kinesis.leases.LeaseCoordinator;
+import software.amazon.kinesis.processor.Checkpointer;
 
 /**
  *
  */
 public interface CheckpointFactory {
-    ICheckpoint createCheckpoint(KinesisClientLibLeaseCoordinator leaseCoordinator);
+    Checkpointer createCheckpointer(LeaseCoordinator<KinesisClientLease> leaseCoordinator,
+                                    LeaseManager<KinesisClientLease> leaseManager);
 }

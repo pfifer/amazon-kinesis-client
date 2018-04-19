@@ -33,7 +33,7 @@ public class TestHarnessBuilder {
     private long currentTimeNanos;
 
     private Map<String, KinesisClientLease> leases = new HashMap<String, KinesisClientLease>();
-    private KinesisClientLeaseManager leaseManager;
+    private KinesisClientDynamoDBLeaseManager leaseManager;
     private Map<String, KinesisClientLease> originalLeases = new HashMap<>();
 
     private Callable<Long> timeProvider = new Callable<Long>() {
@@ -45,7 +45,7 @@ public class TestHarnessBuilder {
 
     };
 
-    public TestHarnessBuilder(KinesisClientLeaseManager leaseManager) {
+    public TestHarnessBuilder(KinesisClientDynamoDBLeaseManager leaseManager) {
         this.leaseManager = leaseManager;
     }
 
@@ -91,7 +91,7 @@ public class TestHarnessBuilder {
         currentTimeNanos += millis * 1000000;
     }
 
-    public Map<String, KinesisClientLease> takeMutateAssert(LeaseTaker<KinesisClientLease> taker, int numToTake)
+    public Map<String, KinesisClientLease> takeMutateAssert(DynamoDBLeaseTaker<KinesisClientLease> taker, int numToTake)
         throws LeasingException {
         Map<String, KinesisClientLease> result = taker.takeLeases(timeProvider);
         Assert.assertEquals(numToTake, result.size());
@@ -106,7 +106,7 @@ public class TestHarnessBuilder {
         return result;
     }
 
-    public Map<String, KinesisClientLease> takeMutateAssert(LeaseTaker<KinesisClientLease> taker, String... takenShardIds)
+    public Map<String, KinesisClientLease> takeMutateAssert(DynamoDBLeaseTaker<KinesisClientLease> taker, String... takenShardIds)
         throws LeasingException {
         Map<String, KinesisClientLease> result = taker.takeLeases(timeProvider);
         Assert.assertEquals(takenShardIds.length, result.size());
@@ -134,7 +134,7 @@ public class TestHarnessBuilder {
         Assert.assertEquals(original, actual); // Assert the contents of the lease
     }
 
-    public void addLeasesToRenew(ILeaseRenewer<KinesisClientLease> renewer, String... shardIds)
+    public void addLeasesToRenew(LeaseRenewer<KinesisClientLease> renewer, String... shardIds)
         throws DependencyException, InvalidStateException {
         List<KinesisClientLease> leasesToRenew = new ArrayList<KinesisClientLease>();
 
@@ -147,7 +147,7 @@ public class TestHarnessBuilder {
         renewer.addLeasesToRenew(leasesToRenew);
     }
 
-    public Map<String, KinesisClientLease> renewMutateAssert(ILeaseRenewer<KinesisClientLease> renewer, String... renewedShardIds)
+    public Map<String, KinesisClientLease> renewMutateAssert(LeaseRenewer<KinesisClientLease> renewer, String... renewedShardIds)
         throws DependencyException, InvalidStateException {
         renewer.renewLeases();
 
