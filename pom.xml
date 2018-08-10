@@ -12,15 +12,13 @@
   ~  express or implied. See the License for the specific language governing
   ~  permissions and limitations under the License.
   -->
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>software.amazon.kinesis</groupId>
   <artifactId>amazon-kinesis-client-pom</artifactId>
   <packaging>pom</packaging>
   <name>Amazon Kinesis Client Library</name>
-  <version>2.0.0</version>
+  <version>2.0.1-SNAPSHOT</version>
   <description>The Amazon Kinesis Client Library for Java enables Java developers to easily consume and process data
     from Amazon Kinesis.
   </description>
@@ -28,6 +26,7 @@
 
   <scm>
     <url>https://github.com/awslabs/amazon-kinesis-client.git</url>
+    <developerConnection>scm:git:ssh://git@github.com:pfifer/amazon-kinesis-client.git</developerConnection>
   </scm>
 
   <properties>
@@ -103,6 +102,17 @@
               <serverId>sonatype-nexus-staging</serverId>
               <nexusUrl>https://oss.sonatype.org</nexusUrl>
               <autoReleaseAfterClose>false</autoReleaseAfterClose>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-release-plugin</artifactId>
+            <version>2.5.3</version>
+            <configuration>
+              <autoVersionSubmodules>true</autoVersionSubmodules>
+              <useReleaseProfile>false</useReleaseProfile>
+              <releaseProfiles>release</releaseProfiles>
+              <goals>deploy</goals>
             </configuration>
           </plugin>
         </plugins>
