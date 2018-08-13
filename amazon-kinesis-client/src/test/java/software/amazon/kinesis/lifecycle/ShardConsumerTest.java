@@ -514,6 +514,7 @@ public class ShardConsumerTest {
 
         awaitAndResetBarrier(taskArriveBarrier);
         Instant previousTaskStartTime = consumer.taskDispatchedAt();
+        log.info("Step 1: consumer.taskDispatchedAt => {} -- previousTaskStartTime: {}", consumer.taskDispatchedAt(), previousTaskStartTime);
         assertThat(consumer.taskRunningTime(), notNullValue());
         consumer.healthCheck();
         awaitAndResetBarrier(taskDepartBarrier);
@@ -521,6 +522,7 @@ public class ShardConsumerTest {
         consumer.healthCheck();
 
         cache.requestBarrier.await();
+        log.info("Step 2: consumer.taskDispatchedAt => {} -- previousTaskStartTime => {}", consumer.taskDispatchedAt(), previousTaskStartTime);
         assertThat(consumer.taskRunningTime(), nullValue());
         cache.requestBarrier.reset();
 
@@ -528,6 +530,8 @@ public class ShardConsumerTest {
 
         awaitAndResetBarrier(taskArriveBarrier);
         Instant currentTaskStartTime = consumer.taskDispatchedAt();
+        log.info("Step 3: consumer.taskDispatchedAt => {} -- previousTaskStartTime => {} -- currentTaskStartTime => {}", consumer.taskDispatchedAt(), previousTaskStartTime, currentTaskStartTime);
+        log.info("prev ({}).equals(current ({})) = {}", previousTaskStartTime, currentTaskStartTime, previousTaskStartTime.equals(currentTaskStartTime));
         assertThat(currentTaskStartTime, not(equalTo(previousTaskStartTime)));
         awaitAndResetBarrier(taskDepartBarrier);
 
